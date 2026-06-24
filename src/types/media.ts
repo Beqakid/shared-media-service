@@ -1,4 +1,4 @@
-// ─── Shared Media Service — Type Definitions (V2) ───────────────
+// ─── Shared Media Service — Type Definitions (V4) ───────────────
 
 /** Supported application identifiers */
 export const SUPPORTED_APP_IDS = ['carehia', 'viliniu', 'volau', 'kai'] as const;
@@ -21,6 +21,18 @@ export type ImageRole = (typeof SUPPORTED_IMAGE_ROLES)[number];
 /** Media asset status (V2: added archived, replaced) */
 export const SUPPORTED_STATUSES = ['active', 'archived', 'deleted', 'replaced'] as const;
 export type MediaStatus = (typeof SUPPORTED_STATUSES)[number];
+
+/** V4: Supported receipt action types */
+export const SUPPORTED_ACTION_TYPES = [
+  'media_uploaded',
+  'media_registered',
+  'media_replaced',
+  'media_archived',
+  'media_deleted',
+  'media_usage_incremented',
+  'media_metadata_updated',
+] as const;
+export type ActionType = (typeof SUPPORTED_ACTION_TYPES)[number];
 
 /** Standard platform image variants */
 export const IMAGE_VARIANTS = {
@@ -121,6 +133,42 @@ export interface MediaAsset {
 /** Media asset with variant URLs in API responses */
 export interface MediaAssetResponse extends MediaAsset {
   variants: Record<string, string>;
+}
+
+/** V4: Media receipt row stored in D1 */
+export interface MediaReceipt {
+  id: string;
+  app_id: string;
+  tenant_id: string;
+  media_asset_id: string;
+  action_type: string;
+  actor_user_id: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  image_role: string | null;
+  image_id: string | null;
+  previous_media_asset_id: string | null;
+  new_media_asset_id: string | null;
+  receipt_status: string;
+  receipt_hash: string;
+  metadata_json: string | null;
+  created_at: string;
+}
+
+/** V4: Create receipt params */
+export interface CreateReceiptParams {
+  appId: string;
+  tenantId: string;
+  mediaAssetId: string;
+  actionType: string;
+  actorUserId?: string;
+  entityType?: string;
+  entityId?: string;
+  imageRole?: string;
+  imageId?: string;
+  previousMediaAssetId?: string;
+  newMediaAssetId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 // ─── Worker Environment Bindings (V2: added SMS_ADMIN_TOKEN) ────

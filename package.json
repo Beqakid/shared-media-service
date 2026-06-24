@@ -1,17 +1,18 @@
 {
   "name": "shared-media-service",
-  "version": "2.0.0",
-  "description": "Shared Media Service (SMS) V2 — Media Library & Tenant Management for Carehia, Viliniu, Volau, Kai, and future apps.",
+  "version": "4.0.0",
+  "description": "Shared Media Service (SMS) for Carehia, Viliniu, Volau, Kai, and future platform applications.",
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:migrate:v1": "wrangler d1 execute sms-db --file=./migrations/001_media_assets.sql",
-    "db:migrate:v2": "wrangler d1 execute sms-db --file=./migrations/002_v2_columns.sql"
+    "db:migrate": "wrangler d1 execute sms-db --file=./migrations/001_media_assets.sql",
+    "db:migrate:v2": "wrangler d1 execute sms-db --file=./migrations/002_v2_columns.sql",
+    "db:migrate:v4": "wrangler d1 execute sms-db --file=./migrations/003_v4_media_receipts.sql"
   },
-  "keywords": ["cloudflare-workers", "media-service", "cloudflare-images", "d1"],
+  "keywords": ["cloudflare-workers", "media-service", "cloudflare-images", "d1", "trust-proof"],
   "author": "Beqakid",
   "license": "MIT",
   "devDependencies": {

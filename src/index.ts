@@ -1,4 +1,4 @@
-// ─── Shared Media Service (SMS) V2 — Worker Entry Point ─────────
+// ─── Shared Media Service (SMS) V4 — Worker Entry Point ─────────
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Env } from './types/media';
@@ -8,8 +8,9 @@ import { getAdminHtml } from './admin/ui';
 
 import uploadUrlRoute from './routes/upload-url';
 import registerRoute from './routes/register';
-import mediaRoute from './routes/media';
+import receiptsRoute from './routes/receipts';
 import manageRoute from './routes/media-manage';
+import mediaRoute from './routes/media';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -20,7 +21,7 @@ app.use('*', cors());
 app.get('/', (c) =>
   c.json({
     service: 'shared-media-service',
-    version: '2.0.0',
+    version: '4.0.0',
     status: 'healthy',
   })
 );
@@ -28,7 +29,7 @@ app.get('/', (c) =>
 app.get('/health', (c) =>
   c.json({
     service: 'shared-media-service',
-    version: '2.0.0',
+    version: '4.0.0',
     status: 'healthy',
     timestamp: new Date().toISOString(),
   })
@@ -37,10 +38,16 @@ app.get('/health', (c) =>
 // ─── V1 API Routes (backward compatible) ────────────────────────
 app.route('/api/media/upload-url', uploadUrlRoute);
 app.route('/api/media/register', registerRoute);
-app.route('/api/media', mediaRoute);
+
+// ─── V4 Receipt Routes (before catch-all) ───────────────────────
+app.route('/api/media/receipts', receiptsRoute);
+app.route('/api/media', receiptsRoute);
 
 // ─── V2 Admin-Protected Routes ──────────────────────────────────
 app.route('/api/media/manage', manageRoute);
+
+// ─── V1 Query Route (catch-all for /api/media) ─────────────────
+app.route('/api/media', mediaRoute);
 
 // ─── Admin UI ───────────────────────────────────────────────────
 app.get('/admin/media', (c) => {
