@@ -1,4 +1,4 @@
-// ─── Media Service — Core Business Logic (V2) ───────────────────
+// ─── Media Service — Core Business Logic (V4) ───────────────────
 import { createDirectUploadUrl, buildVariantUrls } from './cloudflare-images';
 import {
   insertMediaAsset,
@@ -9,6 +9,7 @@ import {
   listTenants,
   queryAllMediaAssets,
 } from '../db/media-assets';
+import { createReceipt } from './receipt-service';
 import type {
   Env,
   UploadUrlRequest,
@@ -62,7 +63,7 @@ export async function handleUploadUrl(
 }
 
 /**
- * Register a completed upload as a media asset (V2: includes new columns).
+ * Register a completed upload as a media asset (V2: includes new columns, V4: receipt).
  */
 export async function handleRegister(
   env: Env,
@@ -95,6 +96,24 @@ export async function handleRegister(
   };
 
   await insertMediaAsset(env.DB, asset);
+
+  // V4: Create trust proof receipt
+  try {
+    await createReceipt(env.DB, {
+      appId: body.appId,
+      tenantId: body.tenantId,
+      mediaAssetId: asset.id,
+      actionType: 'media_registered',
+      actorUserId: body.uploadedBy,
+      entityType: body.entityType,
+      entityId: body.entityId,
+      imageRole: body.imageRole,
+      imageId: body.imageId,
+    });
+  } catch (err) {
+    console.error('Failed to create receipt for media_registered:', err);
+  }
+
   return enrichAsset(env, asset);
 }
 
@@ -117,7 +136,7 @@ export async function handleQuery(
 // ─── V2 Handlers ────────────────────────────────────────────────
 
 /**
- * Update media metadata (PATCH /api/media/:id).
+ * Update media metadata (PATCH /api/media/:id). V4: creates receipt.
  */
 export async function handleUpdate(
   env: Env,
@@ -148,12 +167,29 @@ export async function handleUpdate(
 
   await updateMediaAsset(env.DB, id, updates);
 
+  // V4: Create trust proof receipt
+  try {
+    await createReceipt(env.DB, {
+      appId: body.appId,
+      tenantId: body.tenantId,
+      mediaAssetId: id,
+      actionType: 'media_metadata_updated',
+      imageRole: asset.image_role,
+      imageId: asset.image_id,
+      metadata: {
+        updatedFields: Object.keys(updates).filter((k) => k !== 'updated_at'),
+      },
+    });
+  } catch (err) {
+    console.error('Failed to create receipt for media_metadata_updated:', err);
+  }
+
   const updated = await getMediaAssetById(env.DB, id);
   return enrichAsset(env, updated!);
 }
 
 /**
- * Soft delete a media asset (DELETE /api/media/:id).
+ * Soft delete a media asset (DELETE /api/media/:id). V4: creates receipt.
  */
 export async function handleSoftDelete(
   env: Env,
@@ -177,12 +213,26 @@ export async function handleSoftDelete(
     updated_at: now,
   });
 
+  // V4: Create trust proof receipt
+  try {
+    await createReceipt(env.DB, {
+      appId,
+      tenantId,
+      mediaAssetId: id,
+      actionType: 'media_deleted',
+      imageRole: asset.image_role,
+      imageId: asset.image_id,
+    });
+  } catch (err) {
+    console.error('Failed to create receipt for media_deleted:', err);
+  }
+
   const updated = await getMediaAssetById(env.DB, id);
   return enrichAsset(env, updated!);
 }
 
 /**
- * Replace an image while preserving history (POST /api/media/:id/replace).
+ * Replace an image while preserving history (POST /api/media/:id/replace). V4: creates receipt.
  */
 export async function handleReplace(
   env: Env,
@@ -230,6 +280,26 @@ export async function handleReplace(
     updated_at: now,
   });
 
+  // V4: Create trust proof receipt
+  try {
+    await createReceipt(env.DB, {
+      appId: body.appId,
+      tenantId: body.tenantId,
+      mediaAssetId: id,
+      actionType: 'media_replaced',
+      imageRole: oldAsset.image_role,
+      imageId: oldAsset.image_id,
+      previousMediaAssetId: id,
+      newMediaAssetId: newAsset.id,
+      metadata: {
+        oldImageId: oldAsset.image_id,
+        newImageId: body.newImageId,
+      },
+    });
+  } catch (err) {
+    console.error('Failed to create receipt for media_replaced:', err);
+  }
+
   const updatedOld = await getMediaAssetById(env.DB, id);
 
   return {
@@ -239,7 +309,7 @@ export async function handleReplace(
 }
 
 /**
- * Increment usage count (POST /api/media/:id/usage).
+ * Increment usage count (POST /api/media/:id/usage). V4: creates receipt.
  */
 export async function handleUsageIncrement(
   env: Env,
@@ -256,6 +326,22 @@ export async function handleUsageIncrement(
   }
 
   const newCount = await incrementUsageCount(env.DB, id);
+
+  // V4: Create trust proof receipt
+  try {
+    await createReceipt(env.DB, {
+      appId: body.appId,
+      tenantId: body.tenantId,
+      mediaAssetId: id,
+      actionType: 'media_usage_incremented',
+      imageRole: asset.image_role,
+      imageId: asset.image_id,
+      metadata: { usageCount: newCount },
+    });
+  } catch (err) {
+    console.error('Failed to create receipt for media_usage_incremented:', err);
+  }
+
   return { id, usageCount: newCount };
 }
 

@@ -110,6 +110,52 @@ export function getAdminHtml(env: string): string {
 
   .empty-state { grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text2); }
   .loading { grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text2); }
+
+  /* Receipts section */
+  .receipts-section { margin-top: 0; padding: 16px; border-bottom: 1px solid var(--border); }
+  .receipts-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+  .receipt-card {
+    background: var(--surface2); border-radius: var(--radius); padding: 12px;
+    margin-bottom: 10px; border-left: 3px solid var(--border);
+  }
+  .receipt-card.action-media_registered { border-left-color: #22c55e; }
+  .receipt-card.action-media_replaced { border-left-color: #f97316; }
+  .receipt-card.action-media_archived { border-left-color: #f59e0b; }
+  .receipt-card.action-media_deleted { border-left-color: #ef4444; }
+  .receipt-card.action-media_usage_incremented { border-left-color: #3b82f6; }
+  .receipt-card.action-media_metadata_updated { border-left-color: #a855f7; }
+  .receipt-badge {
+    display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 4px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .receipt-badge.badge-media_registered { background: #065f46; color: #6ee7b7; }
+  .receipt-badge.badge-media_replaced { background: #7c2d12; color: #fdba74; }
+  .receipt-badge.badge-media_archived { background: #78350f; color: #fcd34d; }
+  .receipt-badge.badge-media_deleted { background: #7f1d1d; color: #fca5a5; }
+  .receipt-badge.badge-media_usage_incremented { background: #1e3a5f; color: #93c5fd; }
+  .receipt-badge.badge-media_metadata_updated { background: #4c1d95; color: #c4b5fd; }
+  .receipt-hash {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px; color: var(--text2); cursor: pointer;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 100%; display: inline-block;
+  }
+  .receipt-hash:hover { color: var(--primary-hover); }
+  .receipt-meta {
+    font-size: 11px; color: var(--text2); margin-top: 6px;
+    background: var(--bg); padding: 6px 8px; border-radius: 4px;
+    word-break: break-all; line-height: 1.4;
+  }
+  .receipt-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .receipt-status-badge {
+    display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px;
+    font-weight: 500; background: #1e3a5f; color: #93c5fd;
+  }
+  .receipt-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 12px; }
+  .receipt-row .r-label { color: var(--text2); }
+  .receipt-row .r-value { color: var(--text); }
+  .receipts-empty { text-align: center; padding: 20px; color: var(--text2); font-size: 13px; }
+  .receipts-loading { text-align: center; padding: 20px; color: var(--text2); font-size: 13px; }
 </style>
 </head>
 <body>
@@ -347,10 +393,65 @@ function selectAsset(asset) {
         <button class="btn btn-danger btn-sm" onclick="deleteAsset()">🗑️ Delete</button>
       \` : ''}
     </div>
+    <div class="receipts-section">
+      <h3>📋 Trust Proof Receipts</h3>
+      <div id="receipts-list"><div class="receipts-loading">Loading receipts...</div></div>
+    </div>
   \`;
 
   // Re-render grid to show selection
   document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+
+  // Fetch receipts for this asset
+  loadReceipts(asset);
+}
+
+async function loadReceipts(asset) {
+  const container = document.getElementById('receipts-list');
+  if (!container) return;
+
+  try {
+    const params = new URLSearchParams({ appId: asset.app_id, tenantId: asset.tenant_id });
+    const resp = await fetch(BASE + '/api/media/' + asset.id + '/receipts?' + params);
+    const json = await resp.json();
+    const receipts = json.data || json.receipts || [];
+
+    if (!receipts.length) {
+      container.innerHTML = '<div class="receipts-empty">No receipts found for this asset.</div>';
+      return;
+    }
+
+    container.innerHTML = receipts.map((r, idx) => {
+      const actionClass = 'action-' + (r.action_type || '');
+      const badgeClass = 'badge-' + (r.action_type || '');
+      const hashShort = r.receipt_hash ? r.receipt_hash.substring(0, 16) + '...' : '—';
+      const hashFull = r.receipt_hash || '';
+      const ts = r.created_at ? new Date(r.created_at).toLocaleString() : (r.timestamp ? new Date(r.timestamp).toLocaleString() : '—');
+      const metaPreview = r.metadata_json ? (typeof r.metadata_json === 'string' ? r.metadata_json : JSON.stringify(r.metadata_json)).substring(0, 100) : '';
+      const receiptJson = JSON.stringify(r, null, 2);
+      const escapedJson = receiptJson.replace(/\\\\/g, '\\\\\\\\').replace(/'/g, "\\\\'").replace(/\\n/g, '\\\\n');
+
+      return \`<div class="receipt-card \${actionClass}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span class="receipt-badge \${badgeClass}">\${r.action_type || 'unknown'}</span>
+          \${r.status ? \`<span class="receipt-status-badge">\${r.status}</span>\` : ''}
+        </div>
+        <div class="receipt-row"><span class="r-label">Time</span><span class="r-value">\${ts}</span></div>
+        \${r.actor_user_id ? \`<div class="receipt-row"><span class="r-label">Actor</span><span class="r-value">\${r.actor_user_id}</span></div>\` : ''}
+        <div class="receipt-row">
+          <span class="r-label">Hash</span>
+          <span class="receipt-hash" title="\${hashFull}" onclick="copyToClipboard('\${hashFull}','Receipt hash')">\${hashShort}</span>
+        </div>
+        \${metaPreview ? \`<div class="receipt-meta">\${metaPreview}\${metaPreview.length >= 100 ? '...' : ''}</div>\` : ''}
+        <div class="receipt-actions">
+          <button class="btn btn-secondary btn-sm" onclick="copyToClipboard('\${hashFull}','Receipt hash')">📋 Copy Hash</button>
+          <button class="btn btn-secondary btn-sm" onclick="copyToClipboard('\${escapedJson}','Receipt JSON')">📄 Copy JSON</button>
+        </div>
+      </div>\`;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = '<div class="receipts-empty">Failed to load receipts.</div>';
+  }
 }
 
 function closeDetail() {
