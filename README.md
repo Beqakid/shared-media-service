@@ -1,57 +1,64 @@
-# 📸 Shared Media Service (SMS) V1
+# Shared Media Service (SMS) V2
 
-A standalone, reusable media platform service built on **Cloudflare Workers** that provides centralized image management for all applications in the ecosystem.
+Platform-wide media management service for **Carehia**, **Viliniu**, **Volau**, **Kai**, and future applications.
 
-## Supported Applications
-
-| App ID    | Application                              |
-|-----------|------------------------------------------|
-| `carehia` | Caregiver work app & care marketplace     |
-| `viliniu` | Fiji SMB business OS & marketplace       |
-| `volau`   | Fiji seasonal knowledge platform          |
-| `kai`     | AI coach framework                       |
+Built on Cloudflare Workers + Cloudflare Images + D1.
 
 ## Features
 
-- 🔒 **Secure uploads** via Cloudflare Images Direct Creator Upload URLs
-- 🗄️ **Metadata storage** in Cloudflare D1
-- 🏷️ **Rich tagging** — app, tenant, entity type, entity ID, image role
-- 🖼️ **Standard variants** — `avatar` (128×128), `thumb` (300×300), `card` (600×600), `hero` (1600×900)
-- ⚡ **Edge-deployed** on Cloudflare Workers
+### V1 (Foundation)
+- Secure direct upload URLs (frontend never touches Cloudflare credentials)
+- Image registration with D1 metadata storage
+- Multi-tenant media queries with filtering
+- Standard image variants: `avatar` (128×128), `thumb` (300×300), `card` (600×600), `hero` (1600×900)
+- Input validation for appId, tenantId, entityType, imageRole
 
-## Stack
-
-- Cloudflare Workers + Hono
-- Cloudflare Images
-- Cloudflare D1 (SQLite)
-- TypeScript
+### V2 (Media Library & Management)
+- **Admin Media Library UI** at `/admin/media`
+- **Metadata editing** — alt text, caption, image role, status
+- **Soft delete / archive** with status tracking
+- **Image replacement** with full history chain
+- **Usage tracking** with increment endpoint
+- **Tenant browsing** — list all tenants with asset counts
+- **Admin token security** for all management endpoints
+- **Public variant URL** alongside standard variants
 
 ## Quick Start
 
 ```bash
 npm install
-wrangler d1 create sms-db
-wrangler d1 execute sms-db --file=./migrations/001_media_assets.sql
-wrangler secret put CLOUDFLARE_ACCOUNT_ID
-wrangler secret put CLOUDFLARE_IMAGES_API_TOKEN
-wrangler secret put CLOUDFLARE_IMAGES_ACCOUNT_HASH
-wrangler dev
+npm run dev          # Local development
+npm run deploy       # Deploy to Cloudflare
 ```
 
 ## API Endpoints
 
-| Method | Path                     | Description                    |
-|--------|--------------------------|--------------------------------|
-| GET    | `/health`                | Health check                   |
-| POST   | `/api/media/upload-url`  | Get direct upload URL          |
-| POST   | `/api/media/register`    | Register uploaded media asset  |
-| GET    | `/api/media`             | Query media assets             |
+### Public (V1 — no auth required)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| POST | `/api/media/upload-url` | Get secure upload URL |
+| POST | `/api/media/register` | Register uploaded image |
+| GET | `/api/media` | Query media assets |
 
-## Documentation
+### Admin-Protected (V2 — requires `SMS_ADMIN_TOKEN`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| PATCH | `/api/media/manage/:id` | Update metadata |
+| DELETE | `/api/media/manage/:id` | Soft delete |
+| POST | `/api/media/manage/:id/replace` | Replace image |
+| POST | `/api/media/manage/:id/usage` | Increment usage |
+| GET | `/api/media/manage/tenants` | List tenants |
+| GET | `/api/media/manage/admin/query` | Admin search |
+| GET | `/admin/media` | Admin UI |
 
-- [Architecture](./docs/architecture.md)
-- [API Reference](./docs/api.md)
-- [Deployment Guide](./docs/deployment.md)
+## Docs
+
+- [Architecture](docs/architecture.md)
+- [API Reference](docs/api.md)
+- [Deployment](docs/deployment.md)
+- [Admin UI Guide](docs/admin-ui.md)
+- [V2 Release Notes](docs/v2-release-notes.md)
 
 ## License
 

@@ -1,11 +1,13 @@
-// ─── Validation Middleware & Helpers ─────────────────────────────
+// ─── Validation Middleware & Helpers (V2) ────────────────────────
 import {
   SUPPORTED_APP_IDS,
   SUPPORTED_ENTITY_TYPES,
   SUPPORTED_IMAGE_ROLES,
+  SUPPORTED_STATUSES,
   type AppId,
   type EntityType,
   type ImageRole,
+  type MediaStatus,
 } from '../types/media';
 
 export class ValidationError extends Error {
@@ -59,5 +61,16 @@ export function validateImageRole(imageRole: unknown): asserts imageRole is Imag
 export function validateImageId(imageId: unknown): asserts imageId is string {
   if (!imageId || typeof imageId !== 'string') {
     throw new ValidationError('Missing required field: imageId');
+  }
+}
+
+export function validateStatus(status: unknown): asserts status is MediaStatus {
+  if (!status || typeof status !== 'string') {
+    throw new ValidationError('Missing required field: status');
+  }
+  if (!SUPPORTED_STATUSES.includes(status as MediaStatus)) {
+    throw new ValidationError(
+      `Unsupported status: "${status}". Supported: ${SUPPORTED_STATUSES.join(', ')}`
+    );
   }
 }
