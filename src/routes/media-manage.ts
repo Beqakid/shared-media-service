@@ -64,6 +64,8 @@ manageRoute.get('/admin/query', async (c) => {
     entityType: c.req.query('entityType') || undefined,
     imageRole: c.req.query('imageRole') || undefined,
     status: c.req.query('status') || undefined,
+    moderationStatus: c.req.query('moderationStatus') || undefined,
+    classification: c.req.query('classification') || undefined,
     limit: c.req.query('limit') ? parseInt(c.req.query('limit')!) : 50,
     offset: c.req.query('offset') ? parseInt(c.req.query('offset')!) : 0,
   };
