@@ -10,8 +10,9 @@ const receipts = new Hono<{ Bindings: Env }>();
 /**
  * GET /api/media/receipts
  * Query receipts with filters. appId is required.
+ * Mounted at /api/media, so this path is /receipts relative.
  */
-receipts.get('/', async (c) => {
+receipts.get('/receipts', async (c) => {
   const appId = c.req.query('appId');
   if (!appId) {
     return c.json({ error: 'appId query parameter is required' }, 400);

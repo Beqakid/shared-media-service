@@ -39,14 +39,14 @@ app.get('/health', (c) =>
 app.route('/api/media/upload-url', uploadUrlRoute);
 app.route('/api/media/register', registerRoute);
 
-// ─── V4 Receipt Routes (before catch-all) ───────────────────────
-app.route('/api/media/receipts', receiptsRoute);
-app.route('/api/media', receiptsRoute);
-
 // ─── V2 Admin-Protected Routes ──────────────────────────────────
 app.route('/api/media/manage', manageRoute);
 
-// ─── V1 Query Route (catch-all for /api/media) ─────────────────
+// ─── V4 Receipt Routes + V1 Query (mounted at /api/media) ──────
+// receiptsRoute handles: /receipts, /:id/receipts, /:id/receipt
+// mediaRoute handles: / (query), /:id (get by ID)
+// Order matters: receipts first so /:id/receipts matches before /:id
+app.route('/api/media', receiptsRoute);
 app.route('/api/media', mediaRoute);
 
 // ─── Admin UI ───────────────────────────────────────────────────
