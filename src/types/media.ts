@@ -1,4 +1,4 @@
-// ─── Shared Media Service — Type Definitions (V4) ───────────────
+// ─── Shared Media Service — Type Definitions (V5) ───────────────
 
 /** Supported application identifiers */
 export const SUPPORTED_APP_IDS = ['carehia', 'viliniu', 'volau', 'kai'] as const;
@@ -22,8 +22,20 @@ export type ImageRole = (typeof SUPPORTED_IMAGE_ROLES)[number];
 export const SUPPORTED_STATUSES = ['active', 'archived', 'deleted', 'replaced'] as const;
 export type MediaStatus = (typeof SUPPORTED_STATUSES)[number];
 
-/** V4: Supported receipt action types */
+/** V5: Supported moderation statuses */
+export const SUPPORTED_MODERATION_STATUSES = ['pending_review', 'approved', 'rejected', 'flagged'] as const;
+export type ModerationStatus = (typeof SUPPORTED_MODERATION_STATUSES)[number];
+
+/** V5: Supported classifications */
+export const SUPPORTED_CLASSIFICATIONS = [
+  'logo', 'banner', 'product', 'service', 'gallery', 'avatar',
+  'receipt', 'proof', 'document_preview', 'hero', 'unknown',
+] as const;
+export type Classification = (typeof SUPPORTED_CLASSIFICATIONS)[number];
+
+/** V4+V5: Supported receipt action types */
 export const SUPPORTED_ACTION_TYPES = [
+  // V4
   'media_uploaded',
   'media_registered',
   'media_replaced',
@@ -31,6 +43,13 @@ export const SUPPORTED_ACTION_TYPES = [
   'media_deleted',
   'media_usage_incremented',
   'media_metadata_updated',
+  // V5
+  'media_flagged',
+  'media_approved',
+  'media_rejected',
+  'media_classified',
+  'media_tags_updated',
+  'media_review_notes_updated',
 ] as const;
 export type ActionType = (typeof SUPPORTED_ACTION_TYPES)[number];
 
@@ -109,7 +128,7 @@ export interface TenantSummary {
   last_upload_at: string;
 }
 
-/** A media asset row stored in D1 (V2: added new columns) */
+/** A media asset row stored in D1 (V5: added intelligence & moderation columns) */
 export interface MediaAsset {
   id: string;
   app_id: string;
@@ -128,6 +147,15 @@ export interface MediaAsset {
   usage_count: number;
   alt_text: string | null;
   caption: string | null;
+  // V5: Intelligence & Moderation
+  moderation_status: string;
+  moderation_reason: string | null;
+  classification: string | null;
+  tags_json: string | null;
+  ai_metadata_json: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
 }
 
 /** Media asset with variant URLs in API responses */
@@ -169,6 +197,43 @@ export interface CreateReceiptParams {
   previousMediaAssetId?: string;
   newMediaAssetId?: string;
   metadata?: Record<string, unknown>;
+}
+
+/** V5: Moderation update request */
+export interface ModerationUpdateRequest {
+  appId: string;
+  tenantId: string;
+  moderationStatus: string;
+  moderationReason?: string;
+  reviewedBy: string;
+  reviewNotes?: string;
+}
+
+/** V5: Classification update request */
+export interface ClassificationUpdateRequest {
+  appId: string;
+  tenantId: string;
+  classification: string;
+  tags?: string[];
+}
+
+/** V5: AI metadata update request */
+export interface AiMetadataUpdateRequest {
+  appId: string;
+  tenantId: string;
+  aiMetadata: Record<string, unknown>;
+}
+
+/** V5: Intelligence summary response */
+export interface IntelligenceSummary {
+  totalAssets: number;
+  pendingReviewCount: number;
+  approvedCount: number;
+  rejectedCount: number;
+  flaggedCount: number;
+  classificationCounts: Record<string, number>;
+  appCounts: Record<string, number>;
+  recentUploads: number;
 }
 
 // ─── Worker Environment Bindings (V2: added SMS_ADMIN_TOKEN) ────

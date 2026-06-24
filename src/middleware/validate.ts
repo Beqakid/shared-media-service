@@ -1,13 +1,17 @@
-// ─── Validation Middleware & Helpers (V2) ────────────────────────
+// ─── Validation Middleware & Helpers (V5) ────────────────────────
 import {
   SUPPORTED_APP_IDS,
   SUPPORTED_ENTITY_TYPES,
   SUPPORTED_IMAGE_ROLES,
   SUPPORTED_STATUSES,
+  SUPPORTED_MODERATION_STATUSES,
+  SUPPORTED_CLASSIFICATIONS,
   type AppId,
   type EntityType,
   type ImageRole,
   type MediaStatus,
+  type ModerationStatus,
+  type Classification,
 } from '../types/media';
 
 export class ValidationError extends Error {
@@ -71,6 +75,28 @@ export function validateStatus(status: unknown): asserts status is MediaStatus {
   if (!SUPPORTED_STATUSES.includes(status as MediaStatus)) {
     throw new ValidationError(
       `Unsupported status: "${status}". Supported: ${SUPPORTED_STATUSES.join(', ')}`
+    );
+  }
+}
+
+export function validateModerationStatus(status: unknown): asserts status is ModerationStatus {
+  if (!status || typeof status !== 'string') {
+    throw new ValidationError('Missing required field: moderationStatus');
+  }
+  if (!SUPPORTED_MODERATION_STATUSES.includes(status as ModerationStatus)) {
+    throw new ValidationError(
+      `Unsupported moderationStatus: "${status}". Supported: ${SUPPORTED_MODERATION_STATUSES.join(', ')}`
+    );
+  }
+}
+
+export function validateClassification(classification: unknown): asserts classification is Classification {
+  if (!classification || typeof classification !== 'string') {
+    throw new ValidationError('Missing required field: classification');
+  }
+  if (!SUPPORTED_CLASSIFICATIONS.includes(classification as Classification)) {
+    throw new ValidationError(
+      `Unsupported classification: "${classification}". Supported: ${SUPPORTED_CLASSIFICATIONS.join(', ')}`
     );
   }
 }

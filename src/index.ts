@@ -1,4 +1,4 @@
-// ─── Shared Media Service (SMS) V4 — Worker Entry Point ─────────
+// ─── Shared Media Service (SMS) V5 — Worker Entry Point ─────────
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Env } from './types/media';
@@ -9,6 +9,7 @@ import { getAdminHtml } from './admin/ui';
 import uploadUrlRoute from './routes/upload-url';
 import registerRoute from './routes/register';
 import receiptsRoute from './routes/receipts';
+import moderationRoute from './routes/moderation';
 import manageRoute from './routes/media-manage';
 import mediaRoute from './routes/media';
 
@@ -21,7 +22,7 @@ app.use('*', cors());
 app.get('/', (c) =>
   c.json({
     service: 'shared-media-service',
-    version: '4.0.0',
+    version: '5.0.0',
     status: 'healthy',
   })
 );
@@ -29,7 +30,7 @@ app.get('/', (c) =>
 app.get('/health', (c) =>
   c.json({
     service: 'shared-media-service',
-    version: '4.0.0',
+    version: '5.0.0',
     status: 'healthy',
     timestamp: new Date().toISOString(),
   })
@@ -39,14 +40,18 @@ app.get('/health', (c) =>
 app.route('/api/media/upload-url', uploadUrlRoute);
 app.route('/api/media/register', registerRoute);
 
+// ─── V4 Receipt Routes + V1 Query (mounted at /api/media) ──────
+// receiptsRoute handles: /receipts, /:id/receipts, /:id/receipt
+// Order matters: receipts first so /:id/receipts matches before /:id
+app.route('/api/media', receiptsRoute);
+
+// ─── V5 Moderation Routes (before manage to avoid :id conflicts) ─
+app.route('/api/media/moderate', moderationRoute);
+
 // ─── V2 Admin-Protected Routes ──────────────────────────────────
 app.route('/api/media/manage', manageRoute);
 
-// ─── V4 Receipt Routes + V1 Query (mounted at /api/media) ──────
-// receiptsRoute handles: /receipts, /:id/receipts, /:id/receipt
-// mediaRoute handles: / (query), /:id (get by ID)
-// Order matters: receipts first so /:id/receipts matches before /:id
-app.route('/api/media', receiptsRoute);
+// ─── V1 Query Route (catch-all for /api/media) ─────────────────
 app.route('/api/media', mediaRoute);
 
 // ─── Admin UI ───────────────────────────────────────────────────

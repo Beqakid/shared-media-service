@@ -1,4 +1,4 @@
-// ─── Media Service — Core Business Logic (V4) ───────────────────
+// ─── Media Service — Core Business Logic (V5) ───────────────────
 import { createDirectUploadUrl, buildVariantUrls } from './cloudflare-images';
 import {
   insertMediaAsset,
@@ -8,6 +8,8 @@ import {
   incrementUsageCount,
   listTenants,
   queryAllMediaAssets,
+  queryReviewQueue,
+  getIntelligenceSummary,
 } from '../db/media-assets';
 import { createReceipt } from './receipt-service';
 import type {
@@ -21,6 +23,14 @@ import type {
   ReplaceImageRequest,
   UsageIncrementRequest,
   TenantSummary,
+  ModerationUpdateRequest,
+  ClassificationUpdateRequest,
+  AiMetadataUpdateRequest,
+  IntelligenceSummary,
+} from '../types/media';
+import {
+  SUPPORTED_CLASSIFICATIONS,
+  type Classification,
 } from '../types/media';
 import {
   validateAppId,
@@ -29,6 +39,8 @@ import {
   validateImageRole,
   validateImageId,
   validateStatus,
+  validateModerationStatus,
+  validateClassification,
   ValidationError,
 } from '../middleware/validate';
 
@@ -63,7 +75,7 @@ export async function handleUploadUrl(
 }
 
 /**
- * Register a completed upload as a media asset (V2: includes new columns, V4: receipt).
+ * Register a completed upload as a media asset (V5: includes moderation & classification defaults).
  */
 export async function handleRegister(
   env: Env,
@@ -74,6 +86,12 @@ export async function handleRegister(
   validateEntityType(body.entityType);
   validateImageRole(body.imageRole);
   validateImageId(body.imageId);
+
+  // V5: Set default moderation status and classification
+  const moderationStatus = ['proof', 'receipt', 'document_preview', 'unknown'].includes(body.imageRole)
+    ? 'pending_review' : 'approved';
+  const classification = SUPPORTED_CLASSIFICATIONS.includes(body.imageRole as Classification)
+    ? body.imageRole : 'unknown';
 
   const asset: MediaAsset = {
     id: crypto.randomUUID(),
@@ -93,6 +111,15 @@ export async function handleRegister(
     usage_count: 0,
     alt_text: null,
     caption: null,
+    // V5 fields
+    moderation_status: moderationStatus,
+    moderation_reason: null,
+    classification,
+    tags_json: '[]',
+    ai_metadata_json: null,
+    reviewed_by: null,
+    reviewed_at: null,
+    review_notes: null,
   };
 
   await insertMediaAsset(env.DB, asset);
@@ -249,6 +276,12 @@ export async function handleReplace(
     throw new ValidationError('Asset does not belong to this app/tenant', 403);
   }
 
+  // V5: Determine moderation defaults for replacement asset
+  const moderationStatus = ['proof', 'receipt', 'document_preview', 'unknown'].includes(oldAsset.image_role)
+    ? 'pending_review' : 'approved';
+  const classification = SUPPORTED_CLASSIFICATIONS.includes(oldAsset.image_role as Classification)
+    ? oldAsset.image_role : 'unknown';
+
   // Create new asset inheriting entity context
   const newAsset: MediaAsset = {
     id: crypto.randomUUID(),
@@ -268,6 +301,15 @@ export async function handleReplace(
     usage_count: 0,
     alt_text: oldAsset.alt_text,
     caption: oldAsset.caption,
+    // V5 fields
+    moderation_status: moderationStatus,
+    moderation_reason: null,
+    classification,
+    tags_json: '[]',
+    ai_metadata_json: null,
+    reviewed_by: null,
+    reviewed_at: null,
+    review_notes: null,
   };
 
   await insertMediaAsset(env.DB, newAsset);
@@ -367,6 +409,8 @@ export async function handleAdminQuery(
     entityType?: string;
     imageRole?: string;
     status?: string;
+    moderationStatus?: string;
+    classification?: string;
     limit?: number;
     offset?: number;
   }
@@ -375,10 +419,222 @@ export async function handleAdminQuery(
   if (filters.entityType) validateEntityType(filters.entityType);
   if (filters.imageRole) validateImageRole(filters.imageRole);
   if (filters.status) validateStatus(filters.status);
+  if (filters.moderationStatus) validateModerationStatus(filters.moderationStatus);
+  if (filters.classification) validateClassification(filters.classification);
 
   const { assets, total } = await queryAllMediaAssets(env.DB, filters);
   return {
     data: assets.map((a) => enrichAsset(env, a)),
     total,
   };
+}
+
+// ─── V5 Handlers ────────────────────────────────────────────────
+
+/**
+ * V5: Update moderation status for a media asset.
+ */
+export async function handleModerationUpdate(
+  env: Env,
+  id: string,
+  body: ModerationUpdateRequest
+): Promise<MediaAssetResponse> {
+  validateAppId(body.appId);
+  validateTenantId(body.tenantId);
+  validateModerationStatus(body.moderationStatus);
+
+  const asset = await getMediaAssetById(env.DB, id);
+  if (!asset) throw new ValidationError('Media asset not found', 404);
+  if (asset.app_id !== body.appId || asset.tenant_id !== body.tenantId) {
+    throw new ValidationError('Asset does not belong to this app/tenant', 403);
+  }
+
+  const now = new Date().toISOString();
+  await updateMediaAsset(env.DB, id, {
+    moderation_status: body.moderationStatus,
+    moderation_reason: body.moderationReason ?? null,
+    reviewed_by: body.reviewedBy,
+    reviewed_at: now,
+    review_notes: body.reviewNotes ?? null,
+    updated_at: now,
+  });
+
+  // Determine action type based on moderation status
+  let actionType: string;
+  switch (body.moderationStatus) {
+    case 'approved':
+      actionType = 'media_approved';
+      break;
+    case 'rejected':
+      actionType = 'media_rejected';
+      break;
+    case 'flagged':
+    case 'pending_review':
+    default:
+      actionType = 'media_flagged';
+      break;
+  }
+
+  // Create trust proof receipt
+  try {
+    await createReceipt(env.DB, {
+      appId: body.appId,
+      tenantId: body.tenantId,
+      mediaAssetId: id,
+      actionType,
+      actorUserId: body.reviewedBy,
+      imageRole: asset.image_role,
+      imageId: asset.image_id,
+      metadata: {
+        previousModerationStatus: asset.moderation_status,
+        newModerationStatus: body.moderationStatus,
+        moderationReason: body.moderationReason ?? null,
+        reviewNotes: body.reviewNotes ?? null,
+      },
+    });
+  } catch (err) {
+    console.error(`Failed to create receipt for ${actionType}:`, err);
+  }
+
+  const updated = await getMediaAssetById(env.DB, id);
+  return enrichAsset(env, updated!);
+}
+
+/**
+ * V5: Update classification and tags for a media asset.
+ */
+export async function handleClassificationUpdate(
+  env: Env,
+  id: string,
+  body: ClassificationUpdateRequest
+): Promise<MediaAssetResponse> {
+  validateAppId(body.appId);
+  validateTenantId(body.tenantId);
+  validateClassification(body.classification);
+
+  const asset = await getMediaAssetById(env.DB, id);
+  if (!asset) throw new ValidationError('Media asset not found', 404);
+  if (asset.app_id !== body.appId || asset.tenant_id !== body.tenantId) {
+    throw new ValidationError('Asset does not belong to this app/tenant', 403);
+  }
+
+  const now = new Date().toISOString();
+  const tagsJson = JSON.stringify(body.tags ?? []);
+
+  await updateMediaAsset(env.DB, id, {
+    classification: body.classification,
+    tags_json: tagsJson,
+    updated_at: now,
+  });
+
+  // Create receipt for classification update
+  try {
+    await createReceipt(env.DB, {
+      appId: body.appId,
+      tenantId: body.tenantId,
+      mediaAssetId: id,
+      actionType: 'media_classified',
+      imageRole: asset.image_role,
+      imageId: asset.image_id,
+      metadata: {
+        previousClassification: asset.classification,
+        newClassification: body.classification,
+      },
+    });
+  } catch (err) {
+    console.error('Failed to create receipt for media_classified:', err);
+  }
+
+  // Create receipt for tags update if tags were provided
+  if (body.tags !== undefined) {
+    try {
+      await createReceipt(env.DB, {
+        appId: body.appId,
+        tenantId: body.tenantId,
+        mediaAssetId: id,
+        actionType: 'media_tags_updated',
+        imageRole: asset.image_role,
+        imageId: asset.image_id,
+        metadata: {
+          previousTags: asset.tags_json ? JSON.parse(asset.tags_json) : [],
+          newTags: body.tags,
+        },
+      });
+    } catch (err) {
+      console.error('Failed to create receipt for media_tags_updated:', err);
+    }
+  }
+
+  const updated = await getMediaAssetById(env.DB, id);
+  return enrichAsset(env, updated!);
+}
+
+/**
+ * V5: Update AI metadata for a media asset.
+ */
+export async function handleAiMetadataUpdate(
+  env: Env,
+  id: string,
+  body: AiMetadataUpdateRequest
+): Promise<MediaAssetResponse> {
+  validateAppId(body.appId);
+  validateTenantId(body.tenantId);
+
+  const asset = await getMediaAssetById(env.DB, id);
+  if (!asset) throw new ValidationError('Media asset not found', 404);
+  if (asset.app_id !== body.appId || asset.tenant_id !== body.tenantId) {
+    throw new ValidationError('Asset does not belong to this app/tenant', 403);
+  }
+
+  const now = new Date().toISOString();
+  await updateMediaAsset(env.DB, id, {
+    ai_metadata_json: JSON.stringify(body.aiMetadata),
+    updated_at: now,
+  });
+
+  // Create trust proof receipt
+  try {
+    await createReceipt(env.DB, {
+      appId: body.appId,
+      tenantId: body.tenantId,
+      mediaAssetId: id,
+      actionType: 'media_metadata_updated',
+      imageRole: asset.image_role,
+      imageId: asset.image_id,
+      metadata: {
+        aiFields: Object.keys(body.aiMetadata),
+      },
+    });
+  } catch (err) {
+    console.error('Failed to create receipt for media_metadata_updated (AI):', err);
+  }
+
+  const updated = await getMediaAssetById(env.DB, id);
+  return enrichAsset(env, updated!);
+}
+
+/**
+ * V5: Query the moderation review queue.
+ */
+export async function handleReviewQueue(
+  env: Env,
+  filters: { appId?: string; tenantId?: string; moderationStatus?: string; classification?: string }
+): Promise<MediaAssetResponse[]> {
+  if (filters.appId) validateAppId(filters.appId);
+  if (filters.moderationStatus) validateModerationStatus(filters.moderationStatus);
+  if (filters.classification) validateClassification(filters.classification);
+
+  const assets = await queryReviewQueue(env.DB, filters);
+  return assets.map((a) => enrichAsset(env, a));
+}
+
+/**
+ * V5: Get intelligence summary with counts and stats.
+ */
+export async function handleIntelligenceSummary(
+  env: Env,
+  appId?: string
+): Promise<IntelligenceSummary> {
+  if (appId) validateAppId(appId);
+  return getIntelligenceSummary(env.DB, appId);
 }
