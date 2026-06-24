@@ -1,4 +1,4 @@
-// ─── GET /api/media ─────────────────────────────────────────────
+// ─── GET /api/media — Query media assets (V1 backward compatible) ──
 import { Hono } from 'hono';
 import type { Env, MediaQueryParams } from '../types/media';
 import { handleQuery } from '../services/media-service';

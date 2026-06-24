@@ -1,20 +1,16 @@
-// ─── Cloudflare Images Service ──────────────────────────────────
-import { IMAGE_VARIANTS, type ImageVariant, type Env } from '../types/media';
+// ─── Cloudflare Images Service (V2) ─────────────────────────────
+import { IMAGE_VARIANTS, type Env } from '../types/media';
 
 const CF_IMAGES_API = 'https://api.cloudflare.com/client/v4/accounts';
 
 interface DirectUploadResponse {
-  result: {
-    id: string;
-    uploadURL: string;
-  };
+  result: { id: string; uploadURL: string };
   success: boolean;
   errors: Array<{ code: number; message: string }>;
 }
 
 /**
  * Request a Direct Creator Upload URL from Cloudflare Images.
- * The frontend uploads directly to Cloudflare — the Worker never touches image bytes.
  */
 export async function createDirectUploadUrl(
   env: Env,
@@ -24,16 +20,13 @@ export async function createDirectUploadUrl(
 
   const body = new FormData();
   body.append('requireSignedURLs', 'false');
-
   if (metadata) {
     body.append('metadata', JSON.stringify(metadata));
   }
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.CLOUDFLARE_IMAGES_API_TOKEN}`,
-    },
+    headers: { Authorization: `Bearer ${env.CLOUDFLARE_IMAGES_API_TOKEN}` },
     body,
   });
 
@@ -43,32 +36,27 @@ export async function createDirectUploadUrl(
   }
 
   const data = (await response.json()) as DirectUploadResponse;
-
   if (!data.success) {
-    throw new Error(
-      `Cloudflare Images API failed: ${data.errors.map((e) => e.message).join(', ')}`
-    );
+    throw new Error(`Cloudflare Images API failed: ${data.errors.map((e) => e.message).join(', ')}`);
   }
 
-  return {
-    uploadURL: data.result.uploadURL,
-    imageId: data.result.id,
-  };
+  return { uploadURL: data.result.uploadURL, imageId: data.result.id };
 }
 
 /**
- * Build variant delivery URLs for an image.
- * Format: https://imagedelivery.net/<account_hash>/<image_id>/<variant_name>
+ * Build variant delivery URLs for an image (V2: includes public).
  */
 export function buildVariantUrls(
   accountHash: string,
   imageId: string
-): Record<ImageVariant, string> {
+): Record<string, string> {
   const base = `https://imagedelivery.net/${accountHash}/${imageId}`;
-  return {
-    avatar: `${base}/avatar`,
-    thumb: `${base}/thumb`,
-    card: `${base}/card`,
-    hero: `${base}/hero`,
-  };
+  const urls: Record<string, string> = {};
+
+  for (const variant of Object.keys(IMAGE_VARIANTS)) {
+    urls[variant] = `${base}/${variant}`;
+  }
+  urls.public = `${base}/public`;
+
+  return urls;
 }

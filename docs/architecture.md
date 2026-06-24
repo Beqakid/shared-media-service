@@ -1,74 +1,62 @@
-# SMS V1 — Architecture
+# SMS Architecture
 
 ## Overview
 
-The Shared Media Service (SMS) is a standalone, reusable Cloudflare Worker that provides centralized media management for all platform applications: **Carehia**, **Viliniu**, **Volau**, **Kai**, and future services.
-
-## Design Principles
-
-- **Platform-first** — No app-specific logic. Any application can use SMS by providing its `appId`.
-- **Secure uploads** — Frontends never see Cloudflare credentials. They receive temporary Direct Creator Upload URLs.
-- **Metadata-driven** — All media is tagged with `appId`, `tenantId`, `entityType`, `entityId`, and `imageRole` for flexible querying.
-- **Standard variants** — Four platform-wide image variants (`avatar`, `thumb`, `card`, `hero`) ensure visual consistency everywhere.
-
-## Stack
-
-| Component              | Technology               |
-|------------------------|--------------------------|
-| Runtime                | Cloudflare Workers       |
-| Framework              | Hono (lightweight)       |
-| Image Storage          | Cloudflare Images        |
-| Metadata Database      | Cloudflare D1 (SQLite)   |
-| Language               | TypeScript               |
-
-## Architecture Diagram
+The Shared Media Service (SMS) is a **standalone, platform-wide service** that manages image uploads, storage, metadata, and delivery for all Beqakid applications.
 
 ```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Carehia    │     │   Viliniu    │     │    Volau     │
-│   Frontend   │     │   Frontend   │     │   Frontend   │
-└──────┬───────┘     └──────┬───────┘     └──────┬───────┘
-       │                    │                    │
-       └────────────────────┼────────────────────┘
-                            │
-                  ┌─────────▼─────────┐
-                  │   SMS Worker      │
-                  │   (Hono Router)   │
-                  └───┬──────────┬────┘
-                      │          │
-            ┌─────────▼──┐  ┌───▼──────────┐
-            │  Cloudflare │  │  Cloudflare  │
-            │  Images API │  │  D1 Database │
-            └─────────────┘  └──────────────┘
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│   Carehia   │  │   Viliniu   │  │    Volau    │  │     Kai     │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │                │                │                │
+       └────────────────┴────────────────┴────────────────┘
+                                 │
+                    ┌────────────▼────────────┐
+                    │  SMS Worker (Hono API)  │
+                    │  + Admin UI (/admin)    │
+                    └──┬─────────────────┬───┘
+                       │                 │
+              ┌────────▼──────┐  ┌───────▼───────┐
+              │ D1 Database   │  │  Cloudflare   │
+              │ (metadata)    │  │    Images     │
+              └───────────────┘  └───────────────┘
 ```
 
-## Request Flow
+## Components
 
-### Upload Flow (Two-Step)
+### Cloudflare Worker (Hono)
+- V1 public API: upload-url, register, query
+- V2 admin API: update, delete, replace, usage, tenants
+- V2 admin UI: `/admin/media`
+- Input validation for all supported enums
+- CORS support
 
-1. **Get Upload URL** — App calls `POST /api/media/upload-url` with metadata.
-2. **Direct Upload** — Frontend uploads the image directly to the returned Cloudflare URL.
-3. **Register** — App calls `POST /api/media/register` with the `imageId` from Cloudflare.
-4. **Done** — Media record saved in D1 with variant URLs.
+### D1 Database
+- Single `media_assets` table
+- Indexes for app+tenant, entity, image_id, created, status, replaced_by
+- V2 columns: `updated_at`, `deleted_at`, `replaced_by_asset_id`, `usage_count`, `alt_text`, `caption`
 
-### Query Flow
+### Cloudflare Images
+- Direct Creator Upload (frontend → Cloudflare, no Worker proxy)
+- 5 variants: `avatar`, `thumb`, `card`, `hero`, `public`
+- Delivery via `imagedelivery.net`
 
-1. App calls `GET /api/media?appId=...&tenantId=...` with optional filters.
-2. SMS queries D1, enriches results with variant URLs, and returns them.
-
-## Security Model
-
-- The Worker is the **only** entity that communicates with Cloudflare Images API.
-- Frontends receive **temporary upload URLs** that expire.
-- All requests require `appId` + `tenantId`; unsupported values are rejected.
-- Cloudflare API credentials are stored as Worker secrets (never exposed).
+### Security
+- V1 endpoints: open (app provides its own auth)
+- V2 management endpoints: `SMS_ADMIN_TOKEN` (Bearer auth)
+- Cloudflare credentials stored as Worker secrets, never exposed
 
 ## Data Model
 
-See [Database Schema](./deployment.md#database-schema) for full table definition.
+### Status Lifecycle
+```
+active → archived → active (reactivate)
+active → deleted (soft delete)
+active → replaced (image replacement)
+```
 
-Each `media_asset` row captures:
-- **Ownership**: `app_id`, `tenant_id`, `uploaded_by`
-- **Context**: `entity_type`, `entity_id`, `image_role`
-- **Storage**: `image_id` (Cloudflare Images reference)
-- **Lifecycle**: `status`, `created_at`
+### Replacement Chain
+When an image is replaced:
+1. New asset created with same entity context
+2. Old asset marked `status: replaced`, `replaced_by_asset_id: <new-id>`
+3. Both assets preserved for history

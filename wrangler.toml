@@ -4,22 +4,14 @@ name = "shared-media-service"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
 
-# ─── Environment Variables ───────────────────────────────────────
-# Set these via `wrangler secret put <KEY>` (never commit secrets)
-# CLOUDFLARE_ACCOUNT_ID        — Your Cloudflare account ID
-# CLOUDFLARE_IMAGES_API_TOKEN  — API token with Cloudflare Images permissions
-# CLOUDFLARE_IMAGES_ACCOUNT_HASH — Account hash for image delivery URLs
-
 [vars]
 ENVIRONMENT = "production"
 
-# ─── D1 Database Binding ─────────────────────────────────────────
 [[d1_databases]]
 binding = "DB"
 database_name = "sms-db"
 database_id = "318fb945-ae1e-47e1-9be8-ef0001877244"
 
-# ─── Dev Overrides ───────────────────────────────────────────────
 [env.dev]
 name = "shared-media-service-dev"
 
