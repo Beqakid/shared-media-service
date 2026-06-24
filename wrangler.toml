@@ -1,0 +1,32 @@
+#:schema node_modules/wrangler/config-schema.json
+
+name = "shared-media-service"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+
+# ─── Environment Variables ───────────────────────────────────────
+# Set these via `wrangler secret put <KEY>` (never commit secrets)
+# CLOUDFLARE_ACCOUNT_ID        — Your Cloudflare account ID
+# CLOUDFLARE_IMAGES_API_TOKEN  — API token with Cloudflare Images permissions
+# CLOUDFLARE_IMAGES_ACCOUNT_HASH — Account hash for image delivery URLs
+
+[vars]
+ENVIRONMENT = "production"
+
+# ─── D1 Database Binding ─────────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "sms-db"
+database_id = "<YOUR_D1_DATABASE_ID>"
+
+# ─── Dev Overrides ───────────────────────────────────────────────
+[env.dev]
+name = "shared-media-service-dev"
+
+[env.dev.vars]
+ENVIRONMENT = "development"
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "sms-db-dev"
+database_id = "<YOUR_DEV_D1_DATABASE_ID>"
